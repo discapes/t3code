@@ -21,6 +21,7 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
 import { Argument, Flag } from "effect/cli";
 import * as CliError from "effect/cli/CliError";
 
+import { isLoopbackHost } from "../auth/utils.ts";
 import { readBootstrapEnvelope } from "../bootstrap.ts";
 import * as ServerConfig from "../config.ts";
 import { expandHomePath, resolveBaseDir } from "../os-jank.ts";
@@ -188,6 +189,7 @@ const DevAuthTokenConfig = Config.Redacted("T3CODE_DEV_AUTH_TOKEN").pipe(
 export interface CliServerFlags {
   readonly mode: Option.Option<ServerConfig.RuntimeMode>;
   readonly port: Option.Option<number>;
+  readonly noAuth: Option.Option<boolean>;
   readonly host: Option.Option<string>;
   readonly baseDir: Option.Option<string>;
   readonly cwd: Option.Option<string>;
@@ -217,6 +219,10 @@ export const projectLocationFlags = {
 export const sharedServerCommandFlags = {
   mode: modeFlag,
   port: portFlag,
+  noAuth: Flag.Boolean("no-auth").pipe(
+    Flag.withDescription("Allow credential-free Web UI access on an explicit loopback host."),
+    Flag.optional,
+  ),
   host: hostFlag,
   baseDir: baseDirFlag,
   cwd: Argument.String("cwd").pipe(
@@ -267,6 +273,7 @@ export const resolveServerConfig = (
       mode: flags.mode ?? Option.none(),
       port: flags.port ?? Option.none(),
       host: flags.host ?? Option.none(),
+      noAuth: flags.noAuth ?? Option.none(),
       baseDir: flags.baseDir ?? Option.none(),
       cwd: flags.cwd ?? Option.none(),
       devUrl: flags.devUrl ?? Option.none(),
@@ -406,6 +413,13 @@ export const resolveServerConfig = (
       ),
       () => (mode === "desktop" ? "127.0.0.1" : undefined),
     );
+    const noAuth = Option.getOrElse(normalizedFlags.noAuth, () => false);
+    if (noAuth && (mode !== "web" || !isLoopbackHost(host) || tailscaleServeEnabled)) {
+      return yield* new CliError.UserError({
+        cause:
+          "--no-auth requires web mode, an explicit loopback --host, and Tailscale Serve disabled.",
+      });
+    }
     const logLevel = Option.getOrElse(cliLogLevel, () => env.logLevel);
 
     const otel = yield* OtelEnvironment.load;
@@ -457,7 +471,8 @@ export const resolveServerConfig = (
       baseDir,
       ...derivedPaths,
       serverTracePath,
-      host,
+      host: noAuth && host === "localhost" ? "127.0.0.1" : host,
+      ...(noAuth ? { noAuth } : {}),
       staticDir,
       devUrl,
       ...(devAuthToken === undefined ? {} : { devAuthToken }),
@@ -490,6 +505,7 @@ export const resolveCliAuthConfig = (
       mode: Option.none(),
       port: Option.none(),
       host: Option.none(),
+      noAuth: Option.none(),
       baseDir: flags.baseDir,
       cwd: Option.none(),
       devUrl: flags.devUrl ?? Option.none(),

@@ -14,6 +14,7 @@ export const ServerAuthPolicy = Schema.Literals([
   "loopback-browser",
   "remote-reachable",
   "unsafe-no-auth",
+  "loopback-open",
 ]);
 export type ServerAuthPolicy = typeof ServerAuthPolicy.Type;
 
@@ -21,6 +22,7 @@ export const ServerAuthBootstrapMethod = Schema.Literals(["desktop-bootstrap", "
 export type ServerAuthBootstrapMethod = typeof ServerAuthBootstrapMethod.Type;
 
 export const ServerAuthSessionMethod = Schema.Literals([
+  "local",
   "browser-session-cookie",
   "bearer-access-token",
   "dpop-access-token",

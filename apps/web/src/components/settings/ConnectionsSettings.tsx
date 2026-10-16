@@ -3458,13 +3458,17 @@ export function ConnectionsSettings() {
           ? "This connection cannot view or change network exposure."
           : currentAuthPolicy === "remote-reachable"
             ? "Remote access is already configured. Change network exposure where the server starts."
-            : currentAuthPolicy === "loopback-browser"
-              ? "Only this machine can connect. Restart with a non-loopback host for remote pairing."
-              : "Network exposure information is unavailable."
+            : currentAuthPolicy === "loopback-open"
+              ? "Local access is unrestricted. Restart without --no-auth to require authentication."
+              : currentAuthPolicy === "loopback-browser"
+                ? "Only this machine can connect. Restart with a non-loopback host for remote pairing."
+                : "Network exposure information is unavailable."
       }
       control={
         !desktopBridge &&
-        (currentAuthPolicy === "remote-reachable" || currentAuthPolicy === "loopback-browser") ? (
+        (currentAuthPolicy === "remote-reachable" ||
+          currentAuthPolicy === "loopback-browser" ||
+          currentAuthPolicy === "loopback-open") ? (
           <Tooltip>
             <TooltipTrigger
               render={

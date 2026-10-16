@@ -4,6 +4,7 @@ import type {
   AuthClientPresentationMetadata,
 } from "@t3tools/contracts";
 import type * as HttpServerRequest from "effect/http/HttpServerRequest";
+import * as NodeNet from "node:net";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- Effect's Crypto has no createHmac or timingSafeEqual.
 import * as NodeCrypto from "node:crypto";
 import * as Base64Url from "effect/encoding/Base64Url";
@@ -53,6 +54,14 @@ export function resolveLegacySessionCookieName(input: {
   return input.mode === "web" && !input.development && isRemoteReachableHost(input.host)
     ? SESSION_COOKIE_NAME
     : undefined;
+}
+
+export function isLoopbackHost(host: string | undefined): boolean {
+  return (
+    host === "localhost" ||
+    host === "::1" ||
+    (host !== undefined && NodeNet.isIP(host) === 4 && host.startsWith("127."))
+  );
 }
 
 export function isRemoteReachableHost(host: string | undefined): boolean {

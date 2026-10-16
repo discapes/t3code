@@ -350,3 +350,14 @@ history, and saved connections are kept, and you keep working through pairing, T
 
 Switch **Local environment** back on in the same place to restart with your previous local
 settings.
+
+## Open the local Web UI without pairing
+
+Start a command-line host with `t3 serve --host 127.0.0.1 --no-auth`, then open
+its printed URL. Local access has full permissions and requires no pairing code
+or browser session. IPv6 loopback (`--host ::1`) and `--host localhost` also work.
+
+This option requires an explicit loopback host and cannot be combined with
+Tailscale Serve or desktop mode. Other local processes can access the server;
+keep it off reverse proxies and tunnels. Restart without `--no-auth` to require
+authentication again.

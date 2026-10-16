@@ -9,6 +9,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
@@ -79,6 +80,101 @@ const requestMetadata = {
 };
 
 it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
+  it.effect(
+    "grants local HTTP and WebSocket access while rejecting foreign hosts and origins",
+    () =>
+      Effect.gen(function* () {
+        const auth = yield* EnvironmentAuth.EnvironmentAuth;
+        const sessions = yield* SessionStore.SessionStore;
+        const request = (headers: Record<string, string> = {}) =>
+          HttpServerRequest.fromWeb(
+            new Request("http://localhost:13773/ws", {
+              headers: { host: "localhost:13773", ...headers },
+            }),
+          );
+        const state = yield* auth.getSessionState(request());
+        expect(state.authenticated).toBe(true);
+        expect(state.auth.policy).toBe("loopback-open");
+        const http = yield* auth.authenticateHttpRequest(
+          request({ cookie: `${sessions.cookieName}=expired` }),
+        );
+        expect(http.method).toBe("local");
+        expect(http.scopes).toEqual(AuthAdministrativeScopes);
+        const ws = yield* auth.authenticateWebSocketUpgrade(
+          request({ origin: "http://localhost:13773" }),
+        );
+        expect(ws).toEqual(http);
+        yield* auth.authenticateHttpRequest(
+          request({ host: "[::1]:13773", origin: "http://[::1]:13773" }),
+        );
+        yield* auth.authenticateHttpRequest(
+          request({ host: "localhost:5173", origin: "http://localhost:5173" }),
+        );
+        for (const headers of [
+          { origin: "https://evil.example" },
+          { origin: "http://localhost:3000" },
+          { origin: "null" },
+          { host: "evil.example:13773" },
+          { host: "192.168.1.2:13773" },
+          { host: "localhost:3000" },
+          { host: "evil.example:13773", "x-forwarded-host": "localhost:13773" },
+          { origin: "https://evil.example", "sec-fetch-site": "same-origin" },
+          { "sec-fetch-site": "cross-site" },
+          { "sec-fetch-site": "same-site" },
+        ]) {
+          const denied = yield* auth.getSessionState(request(headers));
+          expect(denied.authenticated).toBe(false);
+          expect(
+            (yield* Effect.flip(auth.authenticateWebSocketUpgrade(request(headers))))._tag,
+          ).toBe("ServerAuthInvalidCredentialError");
+        }
+        expect(
+          (yield* Effect.flip(
+            auth.authenticateHttpRequest(request({ authorization: "Bearer invalid" })),
+          ))._tag,
+        ).toBe("ServerAuthInvalidCredentialError");
+        const scoped = yield* sessions.issue({
+          method: "bearer-access-token",
+          scopes: ["orchestration:read"],
+        });
+        const authenticated = yield* auth.authenticateHttpRequest(
+          request({
+            authorization: `Bearer ${scoped.token}`,
+            host: "remote.example",
+          }),
+        );
+        expect(authenticated.method).toBe("bearer-access-token");
+        expect(authenticated.scopes).toEqual(["orchestration:read"]);
+        expect((yield* Effect.flip(auth.authenticateMcpClient(request())))._tag).toBe(
+          "ServerAuthMissingCredentialError",
+        );
+      }).pipe(
+        Effect.provide(
+          layerEnvironmentAuth({
+            mode: "web",
+            host: "127.0.0.1",
+            noAuth: true,
+            devUrl: new URL("http://localhost:5173"),
+          }),
+        ),
+      ),
+  );
+
+  it.effect("requires credentials when local access is disabled", () =>
+    Effect.gen(function* () {
+      const auth = yield* EnvironmentAuth.EnvironmentAuth;
+      const request = HttpServerRequest.fromWeb(
+        new Request("http://localhost:13773/api/auth/session", {
+          headers: { host: "localhost:13773" },
+        }),
+      );
+      expect((yield* auth.getSessionState(request)).authenticated).toBe(false);
+      expect((yield* Effect.flip(auth.authenticateHttpRequest(request)))._tag).toBe(
+        "ServerAuthMissingCredentialError",
+      );
+    }).pipe(Effect.provide(layerEnvironmentAuth({ mode: "web", host: "127.0.0.1" }))),
+  );
+
   it.effect("uses the reusable dev cookie without overriding a normal scoped cookie", () =>
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;

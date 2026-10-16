@@ -30,6 +30,7 @@ const minimalDesktopFlags = (baseDir: string) => ({
   mode: Option.some("desktop" as const),
   port: Option.some(4888),
   host: Option.none<string>(),
+  noAuth: Option.none<boolean>(),
   baseDir: Option.some(baseDir),
   cwd: Option.none<string>(),
   devUrl: Option.none<URL>(),
@@ -151,6 +152,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         mode: Option.some("web" as const),
         port: Option.some(8788),
         host: Option.none<string>(),
+        noAuth: Option.none<boolean>(),
         baseDir: Option.some(baseDir),
         cwd: Option.none<string>(),
         devUrl: Option.some(new URL("http://127.0.0.1:5173")),
@@ -195,6 +197,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         mode: Option.some("web" as const),
         port: Option.some(8788),
         host: Option.none<string>(),
+        noAuth: Option.none<boolean>(),
         baseDir: Option.some(baseDir),
         cwd: Option.none<string>(),
         devUrl: Option.some(new URL("http://127.0.0.1:5173")),
@@ -245,6 +248,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.none(),
           cwd: Option.none(),
           devUrl: Option.none(),
+          noAuth: Option.none<boolean>(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
@@ -318,6 +322,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.some(new URL("http://127.0.0.1:4173")),
+          noAuth: Option.none<boolean>(),
           noBrowser: Option.some(true),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.some(true),
@@ -396,6 +401,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.some(new URL("http://127.0.0.1:4173")),
+          noAuth: Option.none<boolean>(),
           noBrowser: Option.some(false),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.some(false),
@@ -476,6 +482,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.none(),
           cwd: Option.none(),
           devUrl: Option.none(),
+          noAuth: Option.none<boolean>(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
@@ -575,6 +582,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.some(baseDir),
           cwd: Option.some(customCwd),
           devUrl: Option.some(new URL("http://127.0.0.1:5173")),
+          noAuth: Option.none<boolean>(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
@@ -636,6 +644,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.none(),
           cwd: Option.none(),
           devUrl: Option.some(new URL("http://127.0.0.1:4173")),
+          noAuth: Option.none<boolean>(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
@@ -712,6 +721,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.none(),
+          noAuth: Option.none<boolean>(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
@@ -783,6 +793,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.none(),
+          noAuth: Option.none<boolean>(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
@@ -831,6 +842,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.none(),
+          noAuth: Option.none<boolean>(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
@@ -871,6 +883,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.none(),
+          noAuth: Option.none<boolean>(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
@@ -933,6 +946,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.none(),
+          noAuth: Option.none<boolean>(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
@@ -976,6 +990,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.none(),
+          noAuth: Option.none<boolean>(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
@@ -1021,6 +1036,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.none(),
+          noAuth: Option.none<boolean>(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
@@ -1061,6 +1077,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.none(),
+          noAuth: Option.none<boolean>(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
@@ -1090,6 +1107,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     mode: Option.some("web" as const),
     port: Option.some(3773),
     host: Option.none<string>(),
+    noAuth: Option.none<boolean>(),
     baseDir: Option.some(baseDir),
     cwd: Option.none<string>(),
     devUrl: Option.none<URL>(),
@@ -1213,5 +1231,69 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         expect(resolved.otlpMetricsUrl).toBeUndefined();
         expect(resolved.otlpLogsUrl).toBeUndefined();
       }),
+  );
+  it.effect("restricts --no-auth to explicit loopback web listeners", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-no-auth-" });
+      for (const host of [
+        "127.0.0.1",
+        "127.2.3.4",
+        "::1",
+        "localhost",
+        "0.0.0.0",
+        "::",
+        "192.168.1.2",
+        "127.evil.example",
+        undefined,
+      ]) {
+        const result = yield* Effect.result(
+          resolveServerConfig(
+            {
+              ...minimalWebFlags(baseDir),
+              host: Option.fromUndefinedOr(host),
+              noAuth: Option.some(true),
+            },
+            Option.none(),
+          ).pipe(
+            Effect.provide(
+              Layer.merge(
+                ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })),
+                NetService.layer,
+              ),
+            ),
+          ),
+        );
+        expect(result._tag).toBe(
+          ["127.0.0.1", "127.2.3.4", "::1", "localhost"].includes(host ?? "")
+            ? "Success"
+            : "Failure",
+        );
+        if (result._tag === "Success") {
+          expect(result.success.noAuth).toBe(true);
+          expect(result.success.host).toBe(host === "localhost" ? "127.0.0.1" : host);
+        }
+      }
+      for (const flags of [
+        {
+          ...minimalWebFlags(baseDir),
+          host: Option.some("127.0.0.1"),
+          tailscaleServeEnabled: Option.some(true),
+        },
+        minimalDesktopFlags(baseDir),
+      ]) {
+        const error = yield* Effect.flip(
+          resolveServerConfig({ ...flags, noAuth: Option.some(true) }, Option.none()).pipe(
+            Effect.provide(
+              Layer.merge(
+                ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })),
+                NetService.layer,
+              ),
+            ),
+          ),
+        );
+        expect(error._tag).toBe("UserError");
+      }
+    }),
   );
 });

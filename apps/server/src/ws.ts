@@ -3143,7 +3143,9 @@ export const layer = Layer.unwrap(
         );
         const clientOrigin = readClientConnectionOrigin(request);
         const clientAnalyticsProps = readClientAnalyticsProps(request);
-        yield* sessions.recordClientConnection(session.sessionId, clientOrigin);
+        if (session.method !== "local") {
+          yield* sessions.recordClientConnection(session.sessionId, clientOrigin);
+        }
         yield* analytics.record("client.connected", clientAnalyticsProps);
         const rpcWebSocketHttpEffect = yield* Effect.gen(function* () {
           const { protocol, httpEffect } = yield* RpcServer.makeProtocolWithHttpEffectWebsocket;
@@ -3199,6 +3201,7 @@ export const layer = Layer.unwrap(
             ),
           ),
         );
+        if (session.method === "local") return yield* rpcWebSocketHttpEffect;
         return yield* Effect.acquireUseRelease(
           sessions.markConnected(session.sessionId),
           () =>

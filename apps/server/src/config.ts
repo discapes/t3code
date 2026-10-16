@@ -65,6 +65,7 @@ export class ServerConfig extends Context.Service<
     readonly mode: RuntimeMode;
     readonly port: number;
     readonly host: string | undefined;
+    readonly noAuth?: boolean;
     readonly cwd: string;
     readonly baseDir: string;
     readonly staticDir: string | undefined;

@@ -372,7 +372,7 @@ export class SessionStore extends Context.Service<
     readonly issue: (input?: {
       readonly ttl?: Duration.Duration;
       readonly subject?: string;
-      readonly method?: ServerAuthSessionMethod;
+      readonly method?: Exclude<ServerAuthSessionMethod, "local">;
       readonly scopes?: ReadonlyArray<AuthEnvironmentScope>;
       readonly client?: AuthClientMetadata;
       readonly proofKeyThumbprint?: string;

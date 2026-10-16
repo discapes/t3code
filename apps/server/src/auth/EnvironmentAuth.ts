@@ -16,7 +16,7 @@ import {
   type AuthMcpClientAccess,
   type AuthPairingLink,
   type AuthPairingCredentialResult,
-  type AuthSessionId,
+  AuthSessionId,
   type AuthSessionState,
   authScopeResponse,
   type ServerAuthDescriptor,
@@ -44,6 +44,7 @@ import * as ServerSecretStore from "./ServerSecretStore.ts";
 import * as SessionStore from "./SessionStore.ts";
 import { REUSABLE_DEV_SESSION_EXPIRES_AT, resolveReusableDevAuth } from "./ReusableDevAuth.ts";
 import { verifyRequestDpopProof } from "./dpop.ts";
+import { isLoopbackHost } from "./utils.ts";
 import { DESKTOP_RENDERER_ORIGINS } from "../httpCors.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 
@@ -787,6 +788,46 @@ export const make = Effect.gen(function* () {
   ): Effect.Effect<AuthenticatedSession, ServerAuthCredentialError | ServerAuthInternalError> => {
     const dpopToken = parseDpopToken(request);
     const credential = resolveRequestCredential(request);
+    if (
+      request.headers.authorization === undefined &&
+      config.noAuth &&
+      config.mode === "web" &&
+      isLoopbackHost(config.host)
+    ) {
+      let url: URL;
+      try {
+        url = new URL(`http://${request.headers.host}`);
+      } catch {
+        return Effect.fail(
+          new ServerAuthInvalidCredentialError({ diagnostic: "Invalid local host." }),
+        );
+      }
+      const hostname = url.hostname === "[::1]" ? "::1" : url.hostname;
+      const origin = request.headers.origin;
+      const fetchSite = request.headers["sec-fetch-site"];
+      if (
+        !isLoopbackHost(hostname) ||
+        url.host !== request.headers.host ||
+        (Number(url.port || 80) !== config.port && url.origin !== config.devUrl?.origin) ||
+        (origin !== undefined && origin !== url.origin && origin !== config.devUrl?.origin) ||
+        (origin === undefined &&
+          fetchSite !== undefined &&
+          fetchSite !== "same-origin" &&
+          fetchSite !== "none")
+      ) {
+        return Effect.fail(
+          new ServerAuthInvalidCredentialError({
+            diagnostic: "Local access requires the app's own origin.",
+          }),
+        );
+      }
+      return Effect.succeed({
+        sessionId: AuthSessionId.make("local"),
+        subject: "local",
+        method: "local",
+        scopes: AuthAdministrativeScopes,
+      });
+    }
     if (!credential?.token) {
       return Effect.fail(new ServerAuthMissingCredentialError({}));
     }
