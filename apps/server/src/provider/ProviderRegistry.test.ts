@@ -106,6 +106,7 @@ const layerTestHttpClient = Layer.succeed(
 ).pipe(Layer.provideMerge(ModelManifest.layerTest));
 
 const layerBackgroundPolicyAlwaysRun = Layer.mock(BackgroundPolicy.BackgroundPolicy)({
+  registerClient: () => Effect.succeed(() => Effect.void),
   reportClientActivity: () => Effect.void,
   removeRpcClient: () => Effect.void,
   reportHostPowerState: () => Effect.void,

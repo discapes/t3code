@@ -121,6 +121,7 @@ function layerTestFor(state: {
 
 function layerBackgroundPolicy(shouldRunScopeWork: (scope: BackgroundScope) => boolean) {
   return Layer.mock(BackgroundPolicy.BackgroundPolicy)({
+    registerClient: () => Effect.succeed(() => Effect.void),
     reportClientActivity: () => Effect.void,
     removeRpcClient: () => Effect.void,
     reportHostPowerState: () => Effect.void,

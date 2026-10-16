@@ -30,15 +30,29 @@ class AuthTestApi extends HttpApi.make("environment")
   .add(EnvironmentHttpApi.groups.auth)
   .add(EnvironmentHttpApi.groups.mcpOAuth) {}
 
-const layerConfig = ServerConfig.layerTest(process.cwd(), { prefix: "t3-mcp-oauth-test-" });
-const layerEnvironmentAuth = EnvironmentAuth.layer.pipe(
-  Layer.provide(Sqlite.layerMemory),
-  Layer.provideMerge(ServerSecretStore.layer),
-  Layer.provideMerge(ServerEnvironment.layerIdentity),
-  Layer.provide(layerConfig),
-);
-const makeLayerRoutes = (capture: (auth: EnvironmentAuth.EnvironmentAuth["Service"]) => void) =>
-  Layer.mergeAll(
+const makeLayerConfig = (noAuth: boolean) =>
+  Layer.effect(
+    ServerConfig.ServerConfig,
+    Effect.map(ServerConfig.ServerConfig, (config) => ({
+      ...config,
+      noAuth,
+      mode: "web" as const,
+      host: "127.0.0.1",
+      noAuthOrigin: new URL("https://box.example.ts.net"),
+    })),
+  ).pipe(Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-mcp-oauth-test-" })));
+const makeLayerRoutes = (
+  capture: (auth: EnvironmentAuth.EnvironmentAuth["Service"]) => void,
+  noAuth: boolean,
+) => {
+  const layerConfig = makeLayerConfig(noAuth);
+  const layerEnvironmentAuth = EnvironmentAuth.layer.pipe(
+    Layer.provide(Sqlite.layerMemory),
+    Layer.provideMerge(ServerSecretStore.layer),
+    Layer.provideMerge(ServerEnvironment.layerIdentity),
+    Layer.provide(layerConfig),
+  );
+  return Layer.mergeAll(
     Layer.effectDiscard(
       EnvironmentAuth.EnvironmentAuth.pipe(Effect.tap((auth) => Effect.sync(() => capture(auth)))),
     ),
@@ -58,6 +72,7 @@ const makeLayerRoutes = (capture: (auth: EnvironmentAuth.EnvironmentAuth["Servic
     ),
     Layer.provide(NodeServices.layer),
   );
+};
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const ORIGIN = "https://box.example.ts.net";
@@ -80,6 +95,7 @@ type Handler = (request: Request) => Effect.Effect<Response>;
 
 const withRoutes = <A, E>(
   use: (handler: Handler, auth: EnvironmentAuth.EnvironmentAuth["Service"]) => Effect.Effect<A, E>,
+  noAuth = false,
 ) =>
   Effect.gen(function* () {
     const crypto = yield* Crypto.Crypto;
@@ -87,7 +103,7 @@ const withRoutes = <A, E>(
     let routerAuth: EnvironmentAuth.EnvironmentAuth["Service"] | undefined;
     const layerRoutes = makeLayerRoutes((auth) => {
       routerAuth = auth;
-    });
+    }, noAuth);
     return yield* Effect.acquireUseRelease(
       Effect.sync(() => HttpRouter.toWebHandler(layerRoutes, { disableLogger: true })),
       (web) =>
@@ -564,3 +580,29 @@ it("matches loopback redirects on everything but the port, and https redirects e
   expect(matches("https://bot.example/cb", "https://bot.example/cb?x=1")).toBe(false);
   expect(matches("https://bot.example/cb", "https://evil.example/cb")).toBe(false);
 });
+
+it.live("no-auth browser approval requires a valid CSRF token and an allowed origin", () =>
+  withRoutes(
+    (handler) =>
+      Effect.gen(function* () {
+        const params = authorizeParams(yield* registeredClientId(handler));
+        const response = yield* handler(postJson("/oauth/mcp/approval", params));
+        const details = yield* json<{ csrfToken: string }>(response);
+        expect(details.csrfToken).toEqual(expect.any(String));
+        const decision = { _tag: "browser-session", access: "auto", csrfToken: details.csrfToken };
+        const forged = yield* decide(handler, params, { ...decision, csrfToken: "forged" });
+        expect(forged.status).toBe(400);
+        const foreign = yield* handler(
+          at("/oauth/mcp/decision", {
+            method: "POST",
+            headers: { "content-type": "application/json", origin: "https://evil.example" },
+            body: encodeJson({ authorization: params, decision }),
+          }),
+        );
+        expect(foreign.status).toBe(400);
+        const approved = yield* decide(handler, params, decision);
+        expect(new URL(approved.redirectTo!).searchParams.get("code")).toEqual(expect.any(String));
+      }),
+    true,
+  ),
+);

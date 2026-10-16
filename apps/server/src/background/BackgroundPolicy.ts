@@ -5,7 +5,7 @@ import {
   type ClientActivityLease,
   type ClientActivityReportInput,
   type HostPowerSnapshot,
-  type RpcClientId,
+  RpcClientId,
 } from "@t3tools/contracts";
 import {
   getBackgroundActivityPresetSettings,
@@ -29,6 +29,13 @@ import * as HostPowerMonitor from "./HostPowerMonitor.ts";
 export class BackgroundPolicy extends Context.Service<
   BackgroundPolicy,
   {
+    readonly registerClient: (
+      sessionId: AuthSessionId,
+    ) => Effect.Effect<
+      (input: ClientActivityReportInput) => Effect.Effect<void>,
+      never,
+      Scope.Scope
+    >;
     readonly reportClientActivity: (
       sessionId: AuthSessionId,
       rpcClientId: RpcClientId,
@@ -212,6 +219,7 @@ function computeSnapshot(input: {
 export const make = Effect.fn("background.policy.make")(function* () {
   const hostPowerMonitor = yield* HostPowerMonitor.HostPowerMonitor;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
+  let nextClientId = 0;
   const leasesRef = yield* Ref.make(new Map<string, ClientActivityLease>());
   const changes = yield* PubSub.sliding<BackgroundPolicySnapshot>(1);
   const publishMutex = yield* Semaphore.make(1);
@@ -286,6 +294,15 @@ export const make = Effect.fn("background.policy.make")(function* () {
       }).pipe(Effect.andThen(publishSnapshotUnlocked), Effect.asVoid),
     );
 
+  const registerClient = Effect.fn("BackgroundPolicy.registerClient")(function* (
+    sessionId: AuthSessionId,
+  ) {
+    // Each WebSocket has its own RPC protocol, whose client IDs restart at zero.
+    const clientId = RpcClientId.make(nextClientId++);
+    yield* Effect.addFinalizer(() => removeRpcClient(sessionId, clientId));
+    return (input: ClientActivityReportInput) => reportClientActivity(sessionId, clientId, input);
+  });
+
   const hasDemand: BackgroundPolicy["Service"]["hasDemand"] = (scope) =>
     Effect.map(snapshot, (current) => current.activeScopeKeys.includes(scopeKey(scope)));
 
@@ -335,6 +352,7 @@ export const make = Effect.fn("background.policy.make")(function* () {
   ).pipe(Effect.forkScoped);
 
   return BackgroundPolicy.of({
+    registerClient,
     reportClientActivity,
     removeRpcClient,
     reportHostPowerState: hostPowerMonitor.report,

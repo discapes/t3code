@@ -927,6 +927,17 @@ export const make = Effect.gen(function* () {
       });
     }
 
+    if (claims.sid === "local" && serverConfig.noAuth) {
+      return {
+        sessionId: claims.sid,
+        token,
+        method: "local",
+        subject: "local",
+        scopes: AuthAdministrativeScopes,
+        client: createDefaultClientMetadata(),
+      } satisfies VerifiedSession;
+    }
+
     const row = yield* authSessions
       .getById({ sessionId: claims.sid })
       .pipe(

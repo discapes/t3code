@@ -783,24 +783,13 @@ export const make = Effect.gen(function* () {
     ...config.devAllowedOrigins,
   ]);
 
-  const authenticateRequest = (
-    request: HttpServerRequest.HttpServerRequest,
-  ): Effect.Effect<AuthenticatedSession, ServerAuthCredentialError | ServerAuthInternalError> => {
-    const dpopToken = parseDpopToken(request);
-    const credential = resolveRequestCredential(request);
-    if (
-      request.headers.authorization === undefined &&
-      config.noAuth &&
-      config.mode === "web" &&
-      isLoopbackHost(config.host)
-    ) {
+  const isLocalRequest = (request: HttpServerRequest.HttpServerRequest): boolean => {
+    if (config.noAuth && config.mode === "web" && isLoopbackHost(config.host)) {
       let url: URL;
       try {
         url = new URL(`http://${request.headers.host}`);
       } catch {
-        return Effect.fail(
-          new ServerAuthInvalidCredentialError({ diagnostic: "Invalid local host." }),
-        );
+        return false;
       }
       const proxyOrigin =
         config.noAuthOrigin && config.noAuthOrigin.host === request.headers.host
@@ -822,12 +811,19 @@ export const make = Effect.gen(function* () {
           fetchSite !== "same-origin" &&
           fetchSite !== "none")
       ) {
-        return Effect.fail(
-          new ServerAuthInvalidCredentialError({
-            diagnostic: "Local access requires the app's own origin.",
-          }),
-        );
+        return false;
       }
+      return true;
+    }
+    return false;
+  };
+
+  const authenticateRequest = (
+    request: HttpServerRequest.HttpServerRequest,
+  ): Effect.Effect<AuthenticatedSession, ServerAuthCredentialError | ServerAuthInternalError> => {
+    const dpopToken = parseDpopToken(request);
+    const credential = resolveRequestCredential(request);
+    if (request.headers.authorization === undefined && isLocalRequest(request)) {
       return Effect.succeed({
         sessionId: AuthSessionId.make("local"),
         subject: "local",
@@ -1292,6 +1288,13 @@ export const make = Effect.gen(function* () {
           return yield* sessions.verifyWebSocketToken(websocketTicket).pipe(
             mapSessionVerificationErrors,
             Effect.flatMap(rejectMcpClientAudience),
+            Effect.filterOrFail(
+              (session) => session.method !== "local" || isLocalRequest(request),
+              () =>
+                new ServerAuthInvalidCredentialError({
+                  diagnostic: "Local access requires the app's own origin.",
+                }),
+            ),
             Effect.map((session) => ({
               sessionId: session.sessionId,
               subject: session.subject,
@@ -1350,12 +1353,15 @@ export const make = Effect.gen(function* () {
     request,
   ) => {
     const credential = resolveRequestCredential(request);
-    if (!credential || !isBrowserCookieCredential(credential.source)) {
+    if (
+      !(request.headers.authorization === undefined && isLocalRequest(request)) &&
+      (!credential || !isBrowserCookieCredential(credential.source))
+    ) {
       return Effect.fail(new ServerAuthMissingCredentialError({}));
     }
     return authenticateRequest(request).pipe(
       Effect.filterOrFail(
-        (session) => session.method === "browser-session-cookie",
+        (session) => session.method === "browser-session-cookie" || session.method === "local",
         () => new ServerAuthInvalidCredentialError({ diagnostic: "Not a browser session." }),
       ),
       Effect.withSpan("EnvironmentAuth.authenticateBrowserSession"),

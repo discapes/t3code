@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   authScopeResponse,
   AuthAdministrativeScopes,
+  AuthSessionId,
   AuthStandardClientScopes,
 } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
@@ -9,6 +10,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
+import * as TestClock from "effect/testing/TestClock";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as SqlClient from "effect/sql/SqlClient";
 
@@ -80,6 +82,108 @@ const requestMetadata = {
 };
 
 it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
+  it.effect("rejects local tickets when no-auth is disabled", () =>
+    Effect.gen(function* () {
+      const auth = yield* EnvironmentAuth.EnvironmentAuth;
+      const sessions = yield* SessionStore.SessionStore;
+      const ticket = yield* sessions.issueWebSocketToken(AuthSessionId.make("local"));
+      const request = HttpServerRequest.fromWeb(
+        new Request(`http://localhost:13773/ws?wsTicket=${encodeURIComponent(ticket.token)}`, {
+          headers: { host: "localhost:13773", origin: "http://localhost:13773" },
+        }),
+      );
+      expect((yield* Effect.flip(auth.authenticateWebSocketUpgrade(request)))._tag).toBe(
+        "ServerAuthInvalidCredentialError",
+      );
+    }).pipe(Effect.provide(layerEnvironmentAuth())),
+  );
+
+  it.effect("local tickets validate signatures, expiry, and request origins", () =>
+    Effect.gen(function* () {
+      const auth = yield* EnvironmentAuth.EnvironmentAuth;
+      const request = (ticket?: string, origin = "http://localhost:13773") =>
+        HttpServerRequest.fromWeb(
+          new Request(
+            `http://localhost:13773/ws${ticket ? `?wsTicket=${encodeURIComponent(ticket)}` : ""}`,
+            { headers: { host: "localhost:13773", origin } },
+          ),
+        );
+      const local = yield* auth.authenticateHttpRequest(request());
+      const ticket = yield* auth.issueWebSocketTicket(local);
+      expect((yield* auth.authenticateWebSocketUpgrade(request(ticket.ticket))).method).toBe(
+        "local",
+      );
+      expect(
+        (yield* Effect.flip(
+          auth.authenticateWebSocketUpgrade(request(ticket.ticket, "https://evil.example")),
+        ))._tag,
+      ).toBe("ServerAuthInvalidCredentialError");
+      expect(
+        (yield* Effect.flip(auth.authenticateWebSocketUpgrade(request(`x${ticket.ticket}`))))._tag,
+      ).toBe("ServerAuthInvalidCredentialError");
+      yield* TestClock.adjust("6 minutes");
+      expect(
+        (yield* Effect.flip(auth.authenticateWebSocketUpgrade(request(ticket.ticket))))._tag,
+      ).toBe("ServerAuthInvalidCredentialError");
+    }).pipe(Effect.provide(layerEnvironmentAuth({ mode: "web", host: "127.0.0.1", noAuth: true }))),
+  );
+
+  it.effect("local browser approval and paired remote sessions coexist", () =>
+    Effect.gen(function* () {
+      const auth = yield* EnvironmentAuth.EnvironmentAuth;
+      const sessions = yield* SessionStore.SessionStore;
+      const request = (host: string, origin: string, headers: Record<string, string> = {}) =>
+        HttpServerRequest.fromWeb(
+          new Request(`http://${host}/ws`, {
+            headers: { host, origin, ...headers },
+          }),
+        );
+      expect(
+        (yield* auth.authenticateBrowserSession(
+          request("localhost:13773", "http://localhost:13773"),
+        )).method,
+      ).toBe("local");
+      const paired = yield* sessions.issue({
+        method: "browser-session-cookie",
+        scopes: AuthStandardClientScopes,
+      });
+      const remote = request("t3.prompt.iffe.eu", "https://t3.prompt.iffe.eu", {
+        cookie: `${sessions.cookieName}=${paired.token}`,
+        "x-forwarded-proto": "https",
+      });
+      for (const authenticate of [
+        auth.authenticateHttpRequest,
+        auth.authenticateWebSocketUpgrade,
+        auth.authenticateBrowserSession,
+      ]) {
+        const session = yield* authenticate(remote);
+        expect(session.sessionId).toBe(paired.sessionId);
+        expect(session.method).toBe("browser-session-cookie");
+        expect(session.scopes).toEqual(AuthStandardClientScopes);
+      }
+      expect(
+        (yield* Effect.flip(
+          auth.authenticateHttpRequest(
+            request("t3.prompt.iffe.eu", "https://evil.example", {
+              cookie: `${sessions.cookieName}=${paired.token}`,
+              "x-forwarded-proto": "https",
+            }),
+          ),
+        ))._tag,
+      ).toBe("ServerAuthInvalidCredentialError");
+      const bearer = yield* sessions.issue({ method: "bearer-access-token" });
+      expect(
+        (yield* Effect.flip(
+          auth.authenticateBrowserSession(
+            request("localhost:13773", "http://localhost:13773", {
+              authorization: `Bearer ${bearer.token}`,
+            }),
+          ),
+        ))._tag,
+      ).toBe("ServerAuthMissingCredentialError");
+    }).pipe(Effect.provide(layerEnvironmentAuth({ mode: "web", host: "127.0.0.1", noAuth: true }))),
+  );
+
   it.effect(
     "grants local HTTP and WebSocket access while rejecting foreign hosts and origins",
     () =>
@@ -126,7 +230,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
           expect(denied.authenticated).toBe(false);
           expect(
             (yield* Effect.flip(auth.authenticateWebSocketUpgrade(request(headers))))._tag,
-          ).toBe("ServerAuthInvalidCredentialError");
+          ).toBe("ServerAuthMissingCredentialError");
         }
         expect(
           (yield* Effect.flip(
@@ -194,7 +298,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       ]) {
         expect((yield* auth.getSessionState(request(headers))).authenticated).toBe(false);
         expect((yield* Effect.flip(auth.authenticateWebSocketUpgrade(request(headers))))._tag).toBe(
-          "ServerAuthInvalidCredentialError",
+          "ServerAuthMissingCredentialError",
         );
       }
     }).pipe(

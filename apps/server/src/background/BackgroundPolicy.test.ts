@@ -78,6 +78,26 @@ function layerFor(
 }
 
 describe("BackgroundPolicy", () => {
+  it.effect(
+    "disconnecting one connection preserves another connection sharing its session and client ID",
+    () =>
+      Effect.gen(function* () {
+        const policy = yield* BackgroundPolicy.BackgroundPolicy;
+        const sessionId = AuthSessionId.make("local");
+        const report = yield* policy.registerClient(sessionId);
+        yield* report(makeReport());
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const otherReport = yield* policy.registerClient(sessionId);
+            yield* otherReport(makeReport());
+            assert.equal((yield* policy.snapshot).leases.length, 2);
+          }),
+        );
+        assert.equal((yield* policy.snapshot).leases.length, 1);
+        assert.equal(yield* policy.hasDemand({ type: "vcs-status", cwd: "/repo" }), true);
+      }).pipe(Effect.scoped, Effect.provide(layerFor(nominalHostPower))),
+  );
+
   it.effect("records foreground scoped client demand", () =>
     Effect.gen(function* () {
       const policy = yield* BackgroundPolicy.BackgroundPolicy;

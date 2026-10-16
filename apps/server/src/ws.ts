@@ -88,7 +88,6 @@ import {
   AssetWorkspaceContextResolutionError,
   ChatAttachmentId,
   PersistChatAttachmentsError,
-  RpcClientId,
   EnvironmentAuthorizationError,
   type ProjectId,
   type ProviderDriverKind,
@@ -1263,21 +1262,7 @@ const layerWsRpc = (
       const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
       const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
-      const rpcClientIds = yield* Ref.make(new Set<RpcClientId>());
-      yield* Effect.addFinalizer(() =>
-        Ref.get(rpcClientIds).pipe(
-          Effect.flatMap((clientIds) =>
-            Effect.forEach(
-              clientIds,
-              (clientId) => backgroundPolicy.removeRpcClient(currentSessionId, clientId),
-              {
-                discard: true,
-              },
-            ),
-          ),
-          Effect.ignore,
-        ),
-      );
+      const reportClientActivity = yield* backgroundPolicy.registerClient(currentSessionId);
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const sourceControlDiscovery = yield* SourceControlDiscovery.SourceControlDiscovery;
       const otlpEndpointCheck = yield* OtlpEndpointCheck.OtlpEndpointCheck;
@@ -2401,20 +2386,7 @@ const layerWsRpc = (
         [WS_METHODS.serverRetryResourceTelemetry]: (_input) => resourceTelemetry.retry,
         [WS_METHODS.serverCheckOtlpEndpoint]: (input) => otlpEndpointCheck.check(input),
         [WS_METHODS.serverSignalProcess]: (input) => processDiagnostics.signal(input),
-        [WS_METHODS.serverReportClientActivity]: (input, metadata) =>
-          Ref.update(rpcClientIds, (clientIds) => {
-            const next = new Set(clientIds);
-            next.add(RpcClientId.make(metadata.client.id));
-            return next;
-          }).pipe(
-            Effect.andThen(
-              backgroundPolicy.reportClientActivity(
-                currentSessionId,
-                RpcClientId.make(metadata.client.id),
-                input,
-              ),
-            ),
-          ),
+        [WS_METHODS.serverReportClientActivity]: reportClientActivity,
         [WS_METHODS.serverReportHostPowerState]: (input) =>
           backgroundPolicy.reportHostPowerState(input),
         [WS_METHODS.serverGetBackgroundPolicy]: (_input) => backgroundPolicy.snapshot,
