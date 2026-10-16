@@ -1,0 +1,92 @@
+name: Release Linux CLI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-linux
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: version
+        run: echo "version=$(node -p 'require("./apps/server/package.json").version.split("-")[0]')-nightly.$(date -u +%Y%m%d).${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: false
+      - name: Install dependencies
+        run: vp install --frozen-lockfile --filter=t3... --filter=@t3tools/web... --filter=@t3tools/scripts...
+      - name: Set release version
+        run: node scripts/update-release-package-versions.ts "$VERSION"
+      - name: Build server and Web UI
+        run: vp run --filter t3 build
+      - name: Build executable
+        env:
+          VP_NODE_VERSION: "26.8.2"
+        run: node apps/server/scripts/cli.ts build-exe --verbose
+      - name: Build resource monitor
+        run: |
+          cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml
+          mkdir -p "apps/server/dist/resource-monitor/linux-${{ matrix.arch }}"
+          cp native/resource-monitor/target/release/t3-resource-monitor "apps/server/dist/resource-monitor/linux-${{ matrix.arch }}/"
+      - name: Package and smoke-test
+        run: |
+          node scripts/build-cli-archive.ts --platform linux --arch "${{ matrix.arch }}" --version "$VERSION"
+          node scripts/smoke-cli-archive.ts --archive release-cli/*.tar.gz --expect-version "$VERSION"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cli-linux-${{ matrix.arch }}
+          path: release-cli/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: cli-linux-*
+          merge-multiple: true
+          path: release-cli
+      - name: Publish release
+        working-directory: release-cli
+        run: |
+          sha256sum *.tar.gz > SHA256SUMS
+          gh release create "v$VERSION" *.tar.gz SHA256SUMS \
+            --target "$GITHUB_SHA" --title "Linux CLI $VERSION" \
+            --prerelease --notes "Linux x64 and arm64 builds of discapes/t3code at $GITHUB_SHA."
