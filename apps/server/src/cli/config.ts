@@ -130,6 +130,10 @@ const EnvServerConfig = Config.all({
   port: Config.Port("T3CODE_PORT").pipe(Config.option, Config.map(Option.getOrUndefined)),
   host: Config.String("T3CODE_HOST").pipe(Config.option, Config.map(Option.getOrUndefined)),
   t3Home: Config.String("T3CODE_HOME").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  noAuthOrigin: Config.URL("T3CODE_NO_AUTH_ORIGIN").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
   devUrl: Config.URL("VITE_DEV_SERVER_URL").pipe(Config.option, Config.map(Option.getOrUndefined)),
   devAllowedOrigins: Config.String("T3CODE_DEV_ALLOWED_ORIGINS").pipe(
     Config.withDefault(""),
@@ -420,6 +424,20 @@ export const resolveServerConfig = (
           "--no-auth requires web mode, an explicit loopback --host, and Tailscale Serve disabled.",
       });
     }
+    if (
+      env.noAuthOrigin &&
+      (!["http:", "https:"].includes(env.noAuthOrigin.protocol) ||
+        env.noAuthOrigin.username ||
+        env.noAuthOrigin.password ||
+        env.noAuthOrigin.pathname !== "/" ||
+        env.noAuthOrigin.search ||
+        env.noAuthOrigin.hash)
+    ) {
+      return yield* new CliError.UserError({
+        cause:
+          "T3CODE_NO_AUTH_ORIGIN must be an HTTP(S) origin without credentials, a path, query, or fragment.",
+      });
+    }
     const logLevel = Option.getOrElse(cliLogLevel, () => env.logLevel);
 
     const otel = yield* OtelEnvironment.load;
@@ -472,7 +490,9 @@ export const resolveServerConfig = (
       ...derivedPaths,
       serverTracePath,
       host: noAuth && host === "localhost" ? "127.0.0.1" : host,
-      ...(noAuth ? { noAuth } : {}),
+      ...(noAuth
+        ? { noAuth, ...(env.noAuthOrigin ? { noAuthOrigin: env.noAuthOrigin } : {}) }
+        : {}),
       staticDir,
       devUrl,
       ...(devAuthToken === undefined ? {} : { devAuthToken }),

@@ -160,6 +160,55 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       ),
   );
 
+  it.effect("accepts only the configured public origin behind an authenticating proxy", () =>
+    Effect.gen(function* () {
+      const auth = yield* EnvironmentAuth.EnvironmentAuth;
+      const request = (headers: Record<string, string> = {}) =>
+        HttpServerRequest.fromWeb(
+          new Request("http://127.0.0.1:13773/ws", {
+            headers: { host: "t3.example.com", ...headers },
+          }),
+        );
+      expect(
+        (yield* auth.getSessionState(request({ "sec-fetch-site": "same-origin" }))).authenticated,
+      ).toBe(true);
+      const socket = yield* auth.authenticateWebSocketUpgrade(
+        request({ origin: "https://t3.example.com" }),
+      );
+      expect(socket.method).toBe("local");
+      expect(
+        (yield* auth.getSessionState(request({ host: "localhost:13773" }))).authenticated,
+      ).toBe(true);
+      for (const headers of [
+        { origin: "https://evil.example" },
+        { origin: "http://t3.example.com" },
+        { origin: "https://t3.example.com:444" },
+        { origin: "http://localhost:13773" },
+        { origin: "null" },
+        {
+          host: "evil.example",
+          origin: "https://t3.example.com",
+          "x-forwarded-host": "t3.example.com",
+        },
+        { "sec-fetch-site": "same-site" },
+      ]) {
+        expect((yield* auth.getSessionState(request(headers))).authenticated).toBe(false);
+        expect((yield* Effect.flip(auth.authenticateWebSocketUpgrade(request(headers))))._tag).toBe(
+          "ServerAuthInvalidCredentialError",
+        );
+      }
+    }).pipe(
+      Effect.provide(
+        layerEnvironmentAuth({
+          mode: "web",
+          host: "127.0.0.1",
+          noAuth: true,
+          noAuthOrigin: new URL("https://t3.example.com"),
+        }),
+      ),
+    ),
+  );
+
   it.effect("requires credentials when local access is disabled", () =>
     Effect.gen(function* () {
       const auth = yield* EnvironmentAuth.EnvironmentAuth;

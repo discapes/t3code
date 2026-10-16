@@ -1296,4 +1296,45 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       }
     }),
   );
+  it.effect("validates the public origin for unauthenticated proxy access", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-proxy-origin-" });
+      for (const origin of [
+        "https://t3.example.com",
+        "http://t3.example.com:8080",
+        "https://t3.example.com/path",
+        "https://user@t3.example.com",
+        "https://t3.example.com?query",
+        "https://t3.example.com#fragment",
+        "ftp://t3.example.com",
+      ]) {
+        const result = yield* Effect.result(
+          resolveServerConfig(
+            {
+              ...minimalWebFlags(baseDir),
+              host: Option.some("127.0.0.1"),
+              noAuth: Option.some(true),
+            },
+            Option.none(),
+          ).pipe(
+            Effect.provide(
+              Layer.merge(
+                ConfigProvider.layer(
+                  ConfigProvider.fromEnv({ env: { T3CODE_NO_AUTH_ORIGIN: origin } }),
+                ),
+                NetService.layer,
+              ),
+            ),
+          ),
+        );
+        expect(result._tag).toBe(
+          ["https://t3.example.com", "http://t3.example.com:8080"].includes(origin)
+            ? "Success"
+            : "Failure",
+        );
+        if (result._tag === "Success") expect(result.success.noAuthOrigin?.origin).toBe(origin);
+      }
+    }),
+  );
 });

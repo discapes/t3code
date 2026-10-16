@@ -802,14 +802,21 @@ export const make = Effect.gen(function* () {
           new ServerAuthInvalidCredentialError({ diagnostic: "Invalid local host." }),
         );
       }
+      const proxyOrigin =
+        config.noAuthOrigin && config.noAuthOrigin.host === request.headers.host
+          ? config.noAuthOrigin.origin
+          : undefined;
       const hostname = url.hostname === "[::1]" ? "::1" : url.hostname;
       const origin = request.headers.origin;
       const fetchSite = request.headers["sec-fetch-site"];
       if (
-        !isLoopbackHost(hostname) ||
-        url.host !== request.headers.host ||
-        (Number(url.port || 80) !== config.port && url.origin !== config.devUrl?.origin) ||
-        (origin !== undefined && origin !== url.origin && origin !== config.devUrl?.origin) ||
+        (!proxyOrigin &&
+          (!isLoopbackHost(hostname) ||
+            url.host !== request.headers.host ||
+            (Number(url.port || 80) !== config.port && url.origin !== config.devUrl?.origin))) ||
+        (origin !== undefined &&
+          origin !== (proxyOrigin ?? url.origin) &&
+          (proxyOrigin !== undefined || origin !== config.devUrl?.origin)) ||
         (origin === undefined &&
           fetchSite !== undefined &&
           fetchSite !== "same-origin" &&

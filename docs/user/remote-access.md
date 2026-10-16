@@ -358,6 +358,11 @@ its printed URL. Local access has full permissions and requires no pairing code
 or browser session. IPv6 loopback (`--host ::1`) and `--host localhost` also work.
 
 This option requires an explicit loopback host and cannot be combined with
-Tailscale Serve or desktop mode. Other local processes can access the server;
-keep it off reverse proxies and tunnels. Restart without `--no-auth` to require
-authentication again.
+Tailscale Serve or desktop mode. Other local processes can access the server.
+Restart without `--no-auth` to require authentication again.
+
+To put this mode behind an authenticating reverse proxy, set
+`T3CODE_NO_AUTH_ORIGIN=https://t3.example.com`. The proxy must preserve the
+public Host and Origin headers and enforce authentication for every route,
+including WebSockets. Only that exact public origin and local access are accepted;
+forwarded headers do not grant access.
